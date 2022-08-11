@@ -117,7 +117,7 @@ spec:
     # User control params
     - name: cra-scan-image
       description: Image to use for `scan` task
-      default: "icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.2"
+      default: "icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.9"
     - name: dind-image
       description: image to use for the Docker-in-Docker sidecar (default to icr.io/continuous-delivery/pipeline/docker:19.03.15-dind)
       default: "icr.io/continuous-delivery/pipeline/docker:19.03.15-dind"
@@ -192,6 +192,14 @@ spec:
           if [ -n "$ENV_PROPS" ]; then
             echo "${ENV_PROPS}" > ./env-props
             source ./env-props
+          fi
+
+          # install go cli for BOM go package dependency scanning if repo contains go.mod & yum package manager
+          if [[ $(find "$(params.path)" -name "go.mod" -type f) ]]; then
+            if ! [ -x "$(command -v go)" ] && [ -x "$(command -v yum)" ]; then
+              echo "go.mod found, installing go cli for CRA scanning."
+              yum module -y -q install go-toolset
+            fi
           fi
 
           if [ -n "$SCRIPT_CONTENTS" ]; then
