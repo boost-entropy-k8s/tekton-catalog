@@ -33,8 +33,8 @@ spec:
         Default is to mean only use the branch
       default: ""
     - name: fetch-gitoken-step-image
-      description: image to use for the fetch-gitoken step (default to icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.9)
-      default: "icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.9"
+      description: image to use for the fetch-gitoken step (default to icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.11)
+      default: "icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.11"
     - name: git-client-image
       description: The image to use to run git clone commands
       default: alpine/git
@@ -148,6 +148,21 @@ spec:
         fi;
 
         GIT_TOKEN="$(params.git-access-token)"
+        if [ -z "$GIT_TOKEN" ]; then
+          AUTHTYPE=$(jq -r --arg git_repo "$REPOSITORY" \
+            '.services[] | select (.parameters.repo_url==$git_repo) | .parameters.auth_type' \
+            /cd-config/toolchain.json)
+          if [[ "${AUTHTYPE}" == "pat" ]]; then
+            TOKEN=$(jq -r --arg git_repo "$REPOSITORY" \
+            '.services[] | select (.parameters.repo_url==$git_repo) | .parameters.api_token' \
+            /cd-config/toolchain.json)
+            if [[ "${TOKEN}" ]]; then
+              echo "Using access token from toolchain"
+              GIT_TOKEN="${TOKEN}"
+            fi
+          fi
+        fi
+
         if [ -z "$GIT_TOKEN" ]; then
           echo "Fetching token for $REPOSITORY"
           ibmcloud config --check-version false
