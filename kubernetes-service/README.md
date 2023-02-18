@@ -15,32 +15,7 @@ The `sample` sub-directory contains an EventListener definition `kubernetes-serv
 
 It also contains a `kubernetes-service-no-resources` EventListener definition which is the providing the same example but without the needs to define PipelineResources for cluster as it uses the task's parameter `cluster-name` to provide the information
 
-1) Create a toolchain (or update a toolchain) to include:
-
-   - the git repository that you want to clone, which can be private
-   - the repository containing this tekton task
-   - a tekton pipeline definition
-
-   ![Toolchain overview](./sample/kubernetes-service-sample-toolchain-overview.png)
-
-2) Add the definitions:
-
-   - for the tasks and the sample (`kubernetes-service` and `kubernetes-service/sample` paths)
-
-   ![Tekton pipeline definitions](./sample/kubernetes-service-sample-tekton-pipeline-definitions.png)
-
-3) Add the environment properties:
-
-   - `apikey` to provide an API key used for the ibmcloud login/access
-   - `cluster-name` to indicate the name of the IKS cluster that you want to target
-
-   ![Tekton pipeline environment properties](./sample/kubernetes-service-sample-tekton-pipeline-environment-properties.png)
-
-4) Create a manual trigger to start the sample listener
-
-   ![Tekton pipeline sample trigger](./sample/kubernetes-service-sample-tekton-pipeline-sample-triggers.png)
-
-5) Run the pipeline
+  See the documentation [here](./sample/README.md)
 
 ## iks-fetch-config
 
@@ -68,7 +43,7 @@ Fetch IKS Cluster Configuration helper task
 * **pipeline-debug**: (optional) turn on task script context debugging
 * **continuous-delivery-context-secret**: (optional) name of the secret containing the continuous delivery pipeline context secret (default to `secure-properties`)
 * **kubernetes-service-apikey-secret-key**: (optional) field in the secret that contains the api key used to login to ibmcloud (default to `apikey`)
-* **setup-step-image**: (optional) image to use for the setup step (default to `icr.io/continuous-delivery/pipeline/pipeline-base-image:2.6`)
+* **setup-step-image**: (optional) image to use for the setup step (default to `icr.io/continuous-delivery/pipeline/pipeline-base-image:2.17`)
 
 ### Workspaces
 
@@ -93,7 +68,7 @@ Kubernetes Contextual Execution helper task
 * **cluster-name**: (optional) the name of the cluster - required if no cluster pipeline resource provided to this task
 * **cluster-pipeline-resources-directory**: directory in which the kubeconfig file(s) for clusterPipelineResources are available (default to `/workspace` but this may need to be value of `iks-fetch-config#cluster-pipeline-resources-directory-fallback` if cluster pipeline resource update is not made by the `iks-fetch-config` task - ie using the fallback mechanism of kubeconfig copy to the pipelinerun pvc)
 * **script**: the bash snippet to execute within the context of the kubernetes configuration (default to `kubectl version`)
-* **execute-step-image**: (optional) image to use for the setup step (default to `icr.io/continuous-delivery/pipeline/pipeline-base-image:2.6`)
+* **execute-step-image**: (optional) image to use for the setup step (default to `icr.io/continuous-delivery/pipeline/pipeline-base-image:2.17`)
 * **pipeline-debug**: (optional) turn on task script context debugging
 
 ### Workspaces
