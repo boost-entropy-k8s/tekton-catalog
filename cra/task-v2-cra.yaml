@@ -196,15 +196,25 @@ spec:
             echo "${ENV_PROPS}" > ./env-props
             source ./env-props
           fi
+          #Current Working Directory
+          WORKING_DIR=$PWD
 
           # Install go cli for BOM go package dependency scanning if repo contains go.mod and go is not installed (get latest)
           if [[ $(find "$(params.path)" -name "go.mod" -type f) ]]; then
             if ! command -v go &>/dev/null; then
                 echo "go.mod found, installing go cli for CRA scanning."
-                curl -fsSLo- https://s.id/golang-linux | bash
-                export GOROOT="/home/$USER/go"
-                export GOPATH="/home/$USER/go/packages"
+                echo "Checking latest Go version...\n";
+                LATEST_GO_VERSION="$(curl --silent https://go.dev/VERSION?m=text | head -n 1)";
+                LATEST_GO_DOWNLOAD_URL="https://go.dev/dl/${LATEST_GO_VERSION}.linux-amd64.tar.gz "
+                echo "Downloading ${LATEST_GO_DOWNLOAD_URL}\n\n";
+                cd $HOME
+                curl -OJ -L --progress-bar https://golang.org/dl/${LATEST_GO_VERSION}.linux-amd64.tar.gz
+                tar -xf ${LATEST_GO_VERSION}.linux-amd64.tar.gz
+                export GOROOT="$HOME/go"
+                export GOPATH="$HOME/go/packages"
                 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+                #Return to working directory after go setup
+                cd ${WORKING_DIR}
                 go version
             fi
           fi
@@ -213,8 +223,10 @@ spec:
             echo "Running custom script."
             if [ -f "$CUSTOM_SCRIPT" ]; then
                 chmod +x $CUSTOM_SCRIPT  # ensure execute permissions are set
+                source $CUSTOM_SCRIPT
+            else
+                $CUSTOM_SCRIPT
             fi
-            $CUSTOM_SCRIPT
           fi
 
           if [ -n "$REGION" ]; then
