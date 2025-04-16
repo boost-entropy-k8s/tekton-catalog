@@ -24,14 +24,28 @@ spec:
     - name: build-script
       description: script involved for the build
     - name: scan-step-image
-      default: icr.io/continuous-delivery/toolchains/devsecops/sonar-scanner-cli@sha256:af782cf68bbfe32982aac08e3215d95f57c9ce49444ab8bfa017819ba4905548
+      default: icr.io/continuous-delivery/toolchains/devsecops/sonar-scanner-cli:29-11-2024-10-26
     - name: sonarqube-project-key
       default: ""
     - name: sonar-scan-command
       description: command for sonarqube scan
     - name: doi-policy
-      description: DevOps Insights polciy to evaluate
+      description: DevOps Insights policy to evaluate
       default: "my-policy"
+    - name: sonarqube-name
+      description: |
+        name of the sonarqube toolcard integration in the toolchain
+        (default to "" meaning the first sonarqube integration found will be used)
+      default: ""
+    - name: toolchain-apikey-secret-key
+      description: field in the secret that contains the api key used to access toolchain and DOI instance
+      default: "toolchain-apikey"
+    - name: doi-sonarqube-token-secret-key
+      description: |
+        field in the secret that contains the SonarQube token to publish the SonarQube report to DOI.
+        It has some specific permissions which are required that a Global Analysis Token may not have.
+        See https://cloud.ibm.com/docs/devsecops?topic=devsecops-sonarqube#permissions-for-sonarqube-token
+      default: "doi-sonarqube-token"
     - name: pipeline-debug
       description: Pipeline debug mode. Value can be 0 or 1. Default to 0
       default: "0"
@@ -58,6 +72,10 @@ spec:
         params:
           - name: ibmcloud-api
             value: $(params.ibmcloud-api)
+          - name: toolchain-apikey-secret-key
+            value: $(params.toolchain-apikey-secret-key)
+          - name: doi-sonarqube-token-secret-key
+            value: $(params.doi-sonarqube-token-secret-key)
           - name: repository
             value: $(params.repository)
           - name: branch
@@ -76,6 +94,8 @@ spec:
             value: $(params.sonarqube-project-key)
           - name: sonar-scan-command
             value: $(params.sonar-scan-command)
+          - name: sonarqube-name
+            value: $(params.sonarqube-name)
           - name: doi-policy
             value: $(params.doi-policy)
           - name: pipeline-debug
@@ -120,7 +140,7 @@ spec:
     - name: scan-step-image
       value: icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.46
     - name: sonar-scan-command
-      value: mvn -Dmaven.repo.local="${WORKSPACE_PATH}/.m2" -Dsonar.login="${SONAR_USER}" -Dsonar.password="${SONAR_PASS}" -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.projectKey="$SONAR_PROJECT_KEY" -Dsonar.projectName="$SONAR_PROJECT_KEY" -Dsonar.working.directory="$SONAR_DIR" sonar:sonar
+      value: mvn -Dmaven.repo.local="${WORKSPACE_PATH}/.m2" -Dsonar.login="${SONAR_USER}" -Dsonar.token="${SONAR_PASS}" -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.projectKey="$SONAR_PROJECT_KEY" -Dsonar.projectName="$SONAR_PROJECT_KEY" -Dsonar.working.directory="$SONAR_DIR" sonar:sonar
 ---
 apiVersion: tekton.dev/v1beta1
 kind: EventListener

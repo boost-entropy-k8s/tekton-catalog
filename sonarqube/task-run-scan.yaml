@@ -22,7 +22,7 @@ spec:
       default: icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.46
     - name: scan-step-image
       description: image used for the scan step
-      default: icr.io/continuous-delivery/toolchains/devsecops/sonar-scanner-cli@sha256:af782cf68bbfe32982aac08e3215d95f57c9ce49444ab8bfa017819ba4905548
+      default: icr.io/continuous-delivery/toolchains/devsecops/sonar-scanner-cli:29-11-2024-10-26
     - name: post-to-doi-step-image
       description: image used for the post to doi step
       default: icr.io/continuous-delivery/pipeline/pipeline-base-ubi:3.46
@@ -33,13 +33,13 @@ spec:
         - SONAR_DIR : Sonar Scanner Working directory
         - SONAR_HOST_URL: URL of the sonarqube server
         - SONAR_USER : Sonar Userid
-        - SONAR_PASS : Sonar Password
+        - SONAR_PASS : Sonar Password/Token
         - SONAR_PROJECT_KEY: Sonar Project key of the sonarqube project
         - WORKSPACE_PATH: Path to the workspace
         - PATH_TO_SOURCES : workspace relative path to the sources to scan
 
         The command can be another kind of command for maven java project like
-          mvn -Dmaven.repo.local="${WORKSPACE_PATH}/.m2" -Dsonar.login="${SONAR_USER}" -Dsonar.password="${SONAR_PASS}"
+          mvn -Dmaven.repo.local="${WORKSPACE_PATH}/.m2" -Dsonar.login="${SONAR_USER}" -Dsonar.token="${SONAR_PASS}"
            -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.projectKey="$SONAR_PROJECT_KEY"
            -Dsonar.projectName="$SONAR_PROJECT_KEY" -Dsonar.working.directory="$SONAR_DIR" sonar:sonar
       default: "sonar-scanner -Dsonar.working.directory=$SONAR_DIR"
@@ -63,6 +63,12 @@ spec:
     - name: toolchain-apikey-secret-key
       description: field in the secret that contains the api key used to access toolchain and DOI instance
       default: "toolchain-apikey"
+    - name: doi-sonarqube-token-secret-key
+      description: |
+        field in the secret that contains the SonarQube token to publish the SonarQube report to DOI.
+        It has some specific permissions which are required that a Global Analysis Token may not have.
+        See https://cloud.ibm.com/docs/devsecops?topic=devsecops-sonarqube#permissions-for-sonarqube-token
+      default: "doi-sonarqube-token"
     - name: pipeline-debug
       description: Pipeline debug mode. Value can be 0 or 1. Default to 0
       default: "0"
@@ -129,13 +135,14 @@ spec:
         sonar.host.url=$SONAR_HOST_URL
         sonar.sources=.
         sonar.login=$SONAR_USER
-        sonar.password=$SONAR_PASS
+        sonar.token=$SONAR_PASS
         EOF
         fi
 
         # Keep properties for next step(s)
         SONAR_DIR="/steps/__sonar_scan__"
-        mkdir -p $SONAR_DIR
+        # Ensure SONAR_DIR is writable subsequent step - as sonar step image may not be root
+        mkdir -p --mode=777 $SONAR_DIR
         SONAR_PROJECT_KEY=$(< $WORKSPACE_PATH/$PATH_TO_SOURCES/sonar-project.properties grep sonar.projectKey | cut -d "=" -f2)
 
         echo "SONAR_DIR=$SONAR_DIR" >> /steps/step.properties
@@ -206,6 +213,12 @@ spec:
           value: $(params.doi-toolchain-id)
         - name: DOI_BUILD_NUMBER
           value: $(params.doi-build-number)
+        - name: DOI_SONARQUBE_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: $(params.continuous-delivery-context-secret)
+              key: $(params.doi-sonarqube-token-secret-key)
+              optional: true
         - name: DEFAULT_BUILD_NUMBER
           valueFrom:
             fieldRef:
@@ -244,18 +257,26 @@ spec:
           BUILD_NUMBER="$DEFAULT_BUILD_NUMBER"
         fi
 
-        # Force doi plugin update until https://github.ibm.com/oneibmcloud/DevOps-Insights/issues/9268 fix
-        # which is part of the doi plugin version 0.3.5 is included in the base image
-        ibmcloud plugin update doi -f
-
+        ibmcloud config --check-version=false
         ibmcloud login --apikey ${IBM_CLOUD_API_KEY} -a ${IBM_CLOUD_API} --no-region
 
-        ONE_TIME_TOKEN_NAME=$(date +%s%3N)
-
-        # create a one-time token
-        curl --fail --silent --show-error --location --user "${SONAR_USER}:${SONAR_PASS}" \
-          -X POST "${SONAR_HOST_URL}/api/user_tokens/generate?name=${ONE_TIME_TOKEN_NAME}" | \
-          jq -r '.token' > /steps/sonarqube-token
+        ONE_TIME_TOKEN_NAME=""
+        if [ -z "${DOI_SONARQUBE_TOKEN}" ]; then
+          if [ -n "${SONAR_USER}" ]; then
+            ONE_TIME_TOKEN_NAME=$(date +%s%3N)
+            # create a one-time token
+            echo "Creating a one-time sonarqube token ${ONE_TIME_TOKEN_NAME} for doi publishtestrecord"
+            curl --fail --silent --show-error --location --user "${SONAR_USER}:${SONAR_PASS}" \
+              -X POST "${SONAR_HOST_URL}/api/user_tokens/generate?name=${ONE_TIME_TOKEN_NAME}" | \
+              jq -r '.token' > /steps/sonarqube-token
+          else
+            echo "Using configured sonarqube token for doi publishtestrecord"
+            echo -n "${SONAR_PASS}" > /steps/sonarqube-token
+          fi
+        else
+            echo "Using secret $(params.doi-sonarqube-token-secret-key) as sonarqube token for doi publishtestrecord"
+          echo -n "${DOI_SONARQUBE_TOKEN}" > /steps/sonarqube-token
+        fi
 
         ibmcloud doi publishtestrecord \
           --logicalappname "$DOI_APP_NAME" \
@@ -265,9 +286,11 @@ spec:
           --type sonarqube \
           --sqtoken "$(cat /steps/sonarqube-token)"
 
-        # we have created a one-time token, revoke it at the server to clean up after ourselves
-        curl --fail --silent --show-error --location --user "${SONAR_USER}:${SONAR_PASS}" \
-          -X POST "${SONAR_HOST_URL}/api/user_tokens/revoke?name=${ONE_TIME_TOKEN_NAME}"
+        if [ -n "$ONE_TIME_TOKEN_NAME" ]; then
+          # we have created a one-time token, revoke it at the server to clean up after ourselves
+          curl --fail --silent --show-error --location --user "${SONAR_USER}:${SONAR_PASS}" \
+            -X POST "${SONAR_HOST_URL}/api/user_tokens/revoke?name=${ONE_TIME_TOKEN_NAME}"
+        fi
 
       volumeMounts:
         - mountPath: /cd-config
